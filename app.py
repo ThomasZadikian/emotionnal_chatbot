@@ -24,7 +24,7 @@ def generate_empathetic_response(user_input):
     primary_emotion = max(emotions_dict, key=emotions_dict.get)
     
     messages = [
-        {"role": "system", "content": f"You are an empathetic chatbot. The user is feeling {primary_emotion}."},
+        {"role": "system", "content": f"You are an empathetic and caring chatbot. Your primary goal is to respond to the user's feelings. Acknowledge their emotion, which is '{primary_emotion}', and offer a supportive and understanding message. Do not be generic and always tell me what emotion you are using."},
         {"role": "user", "content": user_input},
     ]
     
@@ -32,7 +32,7 @@ def generate_empathetic_response(user_input):
     
     outputs = chatbot(
         prompt,
-        max_new_tokens=64,
+        max_new_tokens=128,
         do_sample=True,
         temperature=0.7,
         top_k=50,
