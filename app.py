@@ -1,44 +1,59 @@
+# app.py
 import gradio as gr
 from transformers import pipeline
+import torch
 import os
 
-print("Loading the model... Please wait.")
+print("Loading models... This is the final step and may take a moment.")
 
-model_path = "emotion_classifier_results/checkpoint-1875"
+emotion_classifier_path = "emotion_classifier_results/checkpoint-1875" 
+if not os.path.exists(emotion_classifier_path):
+    raise OSError(f"Emotion classifier not found at {emotion_classifier_path}")
+emotion_classifier = pipeline("text-classification", model=emotion_classifier_path, top_k=None)
 
-if not os.path.exists(model_path):
-    raise OSError(f"Model path not found: {model_path}. Please verify the path.")
+chatbot = pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v1.0", torch_dtype=torch.float16, device_map="auto")
 
-emotion_classifier = pipeline(
-    "text-classification",
-    model=model_path,
-    top_k=None
-)
-print("Model loaded successfully! Launching the Gradio app...")
+print("Models loaded! Launching the Gradio app...")
 
-
-def predict_emotions(text):
+def generate_empathetic_response(user_input):
     """
-    This function takes a text string and returns a dictionary of
-    emotion labels and their scores, formatted for Gradio.
+    Analyzes emotion and generates an empathetic response using a modern chat model.
     """
-    predictions = emotion_classifier(text)[0]
+    emotions = emotion_classifier(user_input)[0]
+    emotions_dict = {p['label']: p['score'] for p in emotions}
+    primary_emotion = max(emotions_dict, key=emotions_dict.get)
     
-    results_dict = {p['label']: p['score'] for p in predictions}
+    messages = [
+        {"role": "system", "content": f"You are an empathetic chatbot. The user is feeling {primary_emotion}."},
+        {"role": "user", "content": user_input},
+    ]
     
-    return results_dict
+    prompt = chatbot.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    
+    outputs = chatbot(
+        prompt,
+        max_new_tokens=64,
+        do_sample=True,
+        temperature=0.7,
+        top_k=50,
+        top_p=0.95
+    )
+    
+    response_text = outputs[0]["generated_text"]
+    chatbot_response = response_text[len(prompt):].strip()
+    
+    return emotions_dict, chatbot_response
 
 iface = gr.Interface(
-    fn=predict_emotions,
-    inputs=gr.Textbox(lines=3, placeholder="Enter a sentence here..."),
-    outputs=gr.Label(num_top_classes=5, label="Detected Emotions"),
-    title="🤖 Text Emotion Analyzer",
-    description="A model fine-tuned to detect 28 nuanced emotions. This project was built with the help of Doctorat, a research assistant.",
-    examples=[
-        ["I am so happy that I get to work on this exciting project!"],
-        ["This is really frustrating, the code is not working at all."],
-        ["Oh, great. Another meeting. Just what I needed."]
-    ]
+    fn=generate_empathetic_response,
+    inputs=gr.Textbox(lines=3, placeholder="How are you feeling today?"),
+    outputs=[
+        gr.Label(num_top_classes=5, label="Detected Emotions"),
+        gr.Textbox(label="Empathetic Chatbot Response")
+    ],
+    title="🤖 Empathetic AI Chatbot (ft. TinyLlama)",
+    description="This chatbot first analyzes the emotion in your text, then uses a modern generative model to formulate a context-aware response.",
+    examples=[["I finally finished my big project, I'm so relieved!"], ["I can't believe the server crashed again."]]
 )
 
 iface.launch()
